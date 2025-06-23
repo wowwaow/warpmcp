@@ -1,5 +1,6 @@
 // src/main.rs – fixed
 use anyhow::Result;
+use dotenv::dotenv;
 use env_logger;
 use log::{error, info};
 use std::env;
@@ -16,6 +17,9 @@ use server::MCPServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load environment variables from .env file
+    dotenv().ok();
+
     // Initialise logging (writes to stderr by default so Warp can capture it)
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Stderr)

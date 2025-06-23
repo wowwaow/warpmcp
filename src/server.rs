@@ -36,6 +36,7 @@ impl MCPServer {
         
         loop {
             let mut line = String::new();
+            line.clear();
             match reader.read_line(&mut line).await {
                 Ok(0) => break, // EOF
                 Ok(_) => {

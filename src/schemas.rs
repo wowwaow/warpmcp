@@ -2,6 +2,27 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct TrelloBadges {
+    pub attachments: i32,
+    pub description: bool,
+    pub due: Option<String>,
+    pub due_complete: bool,
+    pub comments: i32,
+    pub votes: i32,
+    pub viewing_member_voted: bool,
+    pub subscribed: bool,
+    pub fogbugz: String,
+    pub check_items: i32,
+    pub check_items_checked: i32,
+    pub check_items_earliest_due: Option<String>,
+    pub last_updated_by_ai: bool,
+    pub start: Option<String>,
+    pub external_source: Option<String>,
+    pub location: bool,
+    pub malicious_attachments: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ToolCall {
     pub name: String,
     pub arguments: Value,
@@ -61,14 +82,31 @@ pub struct TrelloCard {
     pub closed: bool,
     pub url: String,
     #[serde(rename = "shortUrl")]
-    pub short_url: Option<String>,
+    pub short_url: String,
     #[serde(rename = "idMembers", default)]
     pub id_members: Vec<String>,
+    #[serde(rename = "idLabels", default)]
+    pub id_labels: Vec<String>,
     #[serde(default)]
     pub labels: Vec<TrelloLabel>,
     pub due: Option<String>,
     #[serde(rename = "dueComplete")]
-    pub due_complete: Option<bool>,
+    pub due_complete: bool,
+    pub pos: f64,
+    pub email: Option<String>,
+    pub dateLastActivity: String,
+    pub badges: Value,
+    pub subscribed: bool,
+    pub cover: Value,
+    pub nodeId: Option<String>,
+    pub idChecklists: Vec<String>,
+    pub idAttachmentCover: Option<String>,
+    pub idShort: i32,
+    pub manualCoverAttachment: bool,
+    pub shortLink: String,
+    pub isTemplate: bool,
+    pub cardRole: Option<String>,
+    pub mirrorSourceId: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -85,7 +123,9 @@ pub struct TrelloList {
     #[serde(rename = "idBoard")]
     pub id_board: String,
     pub closed: bool,
-    pub pos: f64,
+    pub pos: i64,
+    pub subscribed: bool,
+    pub nodeId: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
