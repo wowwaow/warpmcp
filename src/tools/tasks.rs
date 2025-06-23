@@ -81,9 +81,9 @@ pub async fn scan_trello_tasks(
             "status": status,
             "assigned_to": agent_id,
             "url": card.url,
-            "short_url": card.shortUrl,
+            "short_url": card.short_url,
             "due": card.due,
-            "due_complete": card.dueComplete,
+            "due_complete": card.due_complete,
             "labels": card.labels,
             "members": card.id_members
         }));

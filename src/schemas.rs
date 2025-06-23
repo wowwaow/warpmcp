@@ -52,6 +52,7 @@ pub struct HeartbeatArgs {
 pub struct TrelloCard {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub desc: String,
     #[serde(rename = "idList")]
     pub id_list: String,
@@ -59,12 +60,15 @@ pub struct TrelloCard {
     pub id_board: String,
     pub closed: bool,
     pub url: String,
-    pub shortUrl: Option<String>,
-    #[serde(rename = "idMembers")]
+    #[serde(rename = "shortUrl")]
+    pub short_url: Option<String>,
+    #[serde(rename = "idMembers", default)]
     pub id_members: Vec<String>,
+    #[serde(default)]
     pub labels: Vec<TrelloLabel>,
     pub due: Option<String>,
-    pub dueComplete: Option<bool>,
+    #[serde(rename = "dueComplete")]
+    pub due_complete: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
