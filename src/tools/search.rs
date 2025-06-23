@@ -269,11 +269,20 @@ impl SearchIndex {
         Ok(())
     }
 
-    pub async fn search(
+pub async fn search(
         &self,
         redis: &RedisManager,
         params: &SearchKnowledgeArgs,
     ) -> Result<Value> {
+        // Validate search parameters
+        if params.query.trim().is_empty() {
+            return Err(anyhow!("Search query cannot be empty"));
+        }
+        
+        // Ensure Redis search is initialized
+        if !redis.initialized {
+            return Err(anyhow!("Redis search not initialized"));
+        }
         // Convert standard args to extended search params
         let return_fields = Some(vec![
             "id".to_string(),
@@ -300,32 +309,64 @@ impl SearchIndex {
         self.advanced_search(redis, &search_params).await
     }
 
-    pub async fn advanced_search(
+pub async fn advanced_search(
         &self,
         redis: &RedisManager,
         params: &SearchParams,
     ) -> Result<Value> {
+        // Validate search parameters
+        if params.query.trim().is_empty() {
+            return Err(anyhow!("Search query cannot be empty"));
+        }
+        
+        // Ensure Redis search is initialized 
+        if !redis.initialized {
+            return Err(anyhow!("Redis search not initialized"));
+        }
+        
+        // Build query with proper escaping and validation
+        let query = QueryBuilder::new()
+            .text_match("content", &params.query, params.fuzzy_distance.is_some())
+            .build();
         let mut conn = redis.get_connection().await?;
-
-        // Simplest possible search command
-        let results: (usize, Vec<String>, HashMap<String, String>) = redis::cmd("FT.SEARCH")
-            .arg(&self.name)
-            .arg(format!("@content:{}", params.query))
-            .arg("LIMIT").arg(0).arg(10)
-            .query_async(&mut conn)
-            .await?;
-
-        let mut entries = Vec::new();
-        for (_key, value) in results.2 {
-            if let Ok(entry) = serde_json::from_str::<Value>(&value) {
-                entries.push(entry);
+        let mut retries = 0;
+        
+        while retries < 3 {
+            // Execute search with retry logic
+            let result: RedisResult<(usize, Vec<String>, HashMap<String, String>)> = redis::cmd("FT.SEARCH")
+                .arg(&self.name)
+                .arg(&query)
+                .arg("LIMIT")
+                .arg(params.offset.unwrap_or(0))
+                .arg(params.limit.unwrap_or(10))
+                .query_async(&mut conn)
+                .await;
+                
+            match result {
+                Ok(results) => {
+                    let mut entries = Vec::new();
+                    for (_key, value) in results.2 {
+                        if let Ok(entry) = serde_json::from_str::<Value>(&value) {
+                            entries.push(entry);
+                        }
+                    }
+                    
+                    return Ok(json!({
+                        "query": params.query,
+                        "results": entries,
+                        "count": entries.len()
+                    }));
+                }
+                Err(e) => {
+                    if retries == 2 {
+                        return Err(anyhow!("Search failed after retries: {}", e));
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                    retries += 1;
+                }
             }
         }
-
-        Ok(json!({
-            "query": params.query,
-            "results": entries,
-            "count": entries.len()
-        }))
+        
+        Err(anyhow!("Search failed after maximum retries"))
     }
 }
