@@ -1,0 +1,1 @@
+redis::aio::Connection<Pin<Box<dyn AsyncStream + Send + Sync>>>

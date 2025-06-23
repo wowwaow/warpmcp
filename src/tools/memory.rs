@@ -63,10 +63,11 @@ pub async fn search_knowledge(
 ) -> Result<String> {
     let params: SearchKnowledgeArgs = serde_json::from_value(args)?;
     let mut conn = redis.get_connection().await?;
-    
-    // Search across multiple indices
-    let mut candidate_ids = Vec::new();
-    
+
+    let mut results = Vec::new();
+    let limit = params.limit.unwrap_or(10);
+    let mut matches = Vec::new();
+
     // Search in content using pattern matching
     let pattern = format!("knowledge:*");
     let keys: Vec<String> = conn.keys(&pattern).await?;
@@ -75,57 +76,48 @@ pub async fn search_knowledge(
         let entry: Option<String> = conn.json_get(&key, "$").await?;
         if let Some(json_str) = entry {
             if let Ok(knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
-                    // Simple text search - in production, use proper text search
-                    if knowledge.content.to_lowercase().contains(&params.query.to_lowercase()) ||
-                       knowledge.tags.iter().any(|t| t.to_lowercase().contains(&params.query.to_lowercase())) {
-                        candidate_ids.push(knowledge.id.clone());
-                    }
+                // Simple text search
+                if knowledge.content.to_lowercase().contains(&params.query.to_lowercase()) ||
+                   knowledge.tags.iter().any(|t| t.to_lowercase().contains(&params.query.to_lowercase())) {
+                    matches.push((key, json_str));
                 }
             }
         }
     }
-    
-    // Apply filters
-    let mut results = Vec::new();
-    let limit = params.limit.unwrap_or(10);
-    
-    for id in candidate_ids.iter().take(limit) {
-        let key = format!("knowledge:{}", id);
-        let entry: Option<String> = conn.json_get(&key, "$").await?;
-        
-        if let Some(json_str) = entry {
-            if let Ok(mut knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
-                // Apply filters
-                if let Some(ref category) = params.category_filter {
-                    if &knowledge.category != category {
-                        continue;
-                    }
+
+    for (_key, json_str) in matches {
+        if let Ok(mut knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
+            // Apply filters
+            if let Some(ref category) = params.category_filter {
+                if &knowledge.category != category {
+                    continue;
                 }
-                
-                if let Some(ref agent) = params.agent_filter {
-                    if &knowledge.agent_id != agent {
-                        continue;
-                    }
-                }
-                
-                // Increment access count
-                knowledge.access_count += 1;
-                let _: () = conn.json_set(&key, "$", &knowledge).await?;
-                
-                results.push(json!({
-                    "id": knowledge.id,
-                    "agent_id": knowledge.agent_id,
-                    "category": knowledge.category,
-                    "key": knowledge.key,
-                    "content": knowledge.content,
-                    "tags": knowledge.tags,
-                    "created_at": knowledge.created_at,
-                    "access_count": knowledge.access_count
-                }));
             }
+            
+            if let Some(ref agent) = params.agent_filter {
+                if &knowledge.agent_id != agent {
+                    continue;
+                }
+            }
+            
+            // Increment access count
+            knowledge.access_count += 1;
+            let key = format!("knowledge:{}", knowledge.id);
+            let _: () = conn.json_set(&key, "$", &knowledge).await?;
+            
+            results.push(json!({
+                "id": knowledge.id,
+                "agent_id": knowledge.agent_id,
+                "category": knowledge.category,
+                "key": knowledge.key,
+                "content": knowledge.content,
+                "tags": knowledge.tags,
+                "created_at": knowledge.created_at,
+                "access_count": knowledge.access_count
+            }));
         }
     }
-    
+
     Ok(json!({
         "query": params.query,
         "results": results,
