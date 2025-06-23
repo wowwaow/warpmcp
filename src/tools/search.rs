@@ -289,94 +289,17 @@ impl SearchIndex {
     pub async fn advanced_search(&self, redis: &RedisManager, params: &SearchParams) -> Result<Value> {
         let mut conn = redis.get_connection().await?;
         
-        // Build query using QueryBuilder
-        let mut builder = QueryBuilder::new();
-        
-        // Convert query to Redis format
-        let query = format!("@content:({})", params.query);
-        
-        builder = builder.text_match("", &query, false);
-        
-        // Add tag filters
-        for (field, value) in &params.filters {
-            builder = builder.tag_filter(field, value);
-        }
-        
-        // Add numeric range filters
-        for (field, min, max) in &params.numeric_filters {
-            builder = builder.numeric_range(field, *min, *max);
-        }
-        
-        let query = builder.build();
-        
-        // Build advanced search command
-        let mut cmd = redis::cmd("FT.SEARCH");
-        cmd.arg(&self.name)
-           .arg(query);
-           
-        // Add limit and offset
-        if let Some(limit) = params.limit {
-            cmd.arg("LIMIT")
-               .arg(params.offset.unwrap_or(0))
-               .arg(limit);
-        }
-        
-        // Add sorting
-        if let Some(ref sort_field) = params.sort_by {
-            cmd.arg("SORTBY")
-               .arg(sort_field)
-               .arg(if params.sort_asc { "ASC" } else { "DESC" });
-        }
-        
-        // Add scoring
-        if let Some(min_score) = params.min_score {
-            cmd.arg("WITHSCORES")
-               .arg("FILTER")
-               .arg("_score")
-               .arg(min_score)
-               .arg("inf");
-        }
-        
-        // Add field return controls
-        if let Some(ref fields) = params.return_fields {
-            cmd.arg("RETURN").arg(fields.len()).arg(fields);
-        } else {
-cmd.arg("RETURN").arg(4).arg("id").arg("agent_id").arg("category").arg("content");
-        }
-        
-        // Add highlighting and summarization
-        if params.highlight {
-            cmd.arg("HIGHLIGHT");
-        }
-        if params.summarize {
-            cmd.arg("SUMMARIZE");
-        }
-        
-        // Execute search
-        let results: (usize, Vec<String>, HashMap<String, String>) = cmd.query_async(&mut conn).await?;
-        let mut entries = Vec::new();
-        
-        for (_key, value) in results.2 {
-            if let Ok(doc) = serde_json::from_str::<Value>(&value) {
-                if let Some(entry) = doc.as_object() {
-                    entries.push(json!({
-                        "id": entry.get("id").unwrap_or(&json!(null)),
-                        "agent_id": entry.get("agent_id").unwrap_or(&json!(null)),
-                        "category": entry.get("category").unwrap_or(&json!(null)),
-                        "key": entry.get("key").unwrap_or(&json!(null)),
-                        "content": entry.get("content").unwrap_or(&json!(null)),
-                        "tags": entry.get("tags").unwrap_or(&json!(null)),
-                        "created_at": entry.get("created_at").unwrap_or(&json!(null)),
-                        "access_count": entry.get("access_count").unwrap_or(&json!(0))
-                    }));
-                }
-            }
-        }
-        
+        // Direct Redis command with minimal query
+        let results: String = redis::cmd("FT.SEARCH")
+            .arg("knowledge-idx")
+            .arg(format!("@content:{}", params.query))
+            .query_async(&mut conn)
+            .await?;
+            
         Ok(json!({
             "query": params.query,
-            "results": entries,
-            "count": entries.len()
+            "results": results,
+            "count": 1
         }))
     }
 }
