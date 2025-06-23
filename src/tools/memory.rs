@@ -5,9 +5,14 @@ use redis::{AsyncCommands, JsonAsyncCommands};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::search::SearchIndex;
+use super::search::{SearchIndex, SearchParams};
 
 const MEMORY_EXPIRATION: i64 = 604800; // 7 days in seconds
+
+async fn ensure_index(redis: &RedisManager) -> Result<()> {
+    let index = SearchIndex::new("knowledge-idx");
+    index.create(redis).await
+}
 
 pub async fn store_knowledge(
     redis: &RedisManager,
@@ -32,16 +37,15 @@ pub async fn store_knowledge(
         access_count: 0,
     };
     
+    // Ensure search index exists
+    if let Err(e) = ensure_index(redis).await {
+        eprintln!("Warning: Failed to create search index: {}", e);
+    }
+
     // Store in RedisJSON for complex queries
     let json_key = format!("knowledge:{}", knowledge_id);
     let _: () = conn.json_set(&json_key, "$", &entry).await?;
     let _: () = conn.expire(&json_key, MEMORY_EXPIRATION).await?;
-    
-    // Ensure search index exists
-    let index = SearchIndex::new("knowledge-idx");
-    if let Err(e) = index.create(redis).await {
-        eprintln!("Warning: Failed to create search index: {}", e);
-    }
     
     Ok(format!("Knowledge stored with ID: {}", knowledge_id))
 }
@@ -52,7 +56,12 @@ pub async fn search_knowledge(
 ) -> Result<String> {
     let params: SearchKnowledgeArgs = serde_json::from_value(args)?;
     
-    // Use new search index
+    // Ensure search index exists
+    if let Err(e) = ensure_index(redis).await {
+        eprintln!("Warning: Failed to create search index: {}", e);
+    }
+
+    // Use search index
     let index = SearchIndex::new("knowledge-idx");
     let results = index.search(redis, &params).await?;
     
