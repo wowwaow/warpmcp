@@ -1,3 +1,4 @@
+use crate::cache::{ResponseCache, ResponseBuffer, CacheMetrics};
 use crate::schemas::*;
 use crate::tools::{database, heartbeat, memory, tasks}; // Removed unused 'trello'
 use crate::utils::RedisManager;
@@ -6,23 +7,31 @@ use log::{error, info};
 use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use flate2::write::GzEncoder;
+use flate2::Compression;
 
 #[derive(Clone)]
 pub struct MCPServer {
     redis: RedisManager,
     trello_client: reqwest::Client,
+    response_cache: ResponseCache,
 }
 
 impl MCPServer {
     pub async fn new() -> Result<Self> {
         let redis = RedisManager::new().await?;
         let trello_client = reqwest::Client::new();
+        let response_cache = ResponseCache::new(
+            1000, // Cache up to 1000 responses
+            Duration::from_secs(300), // 5 minute TTL
+        );
 
-        info!("MCP Server initialized with enhanced database capabilities");
+        info!("MCP Server initialized with response caching and enhanced database capabilities");
         
         Ok(Self {
             redis,
             trello_client,
+            response_cache,
         })
     }
 
@@ -37,6 +46,7 @@ impl MCPServer {
         let mut reader = BufReader::with_capacity(16 * 1024, stdin); // 16KB read buffer
         let mut stdout = tokio::io::stdout();
         
+        let mut response_buffer = ResponseBuffer::new(10 * 1024 * 1024); // 10MB buffer
         let mut batch_buffer = Vec::with_capacity(MAX_BATCH_SIZE);
         let mut line_buffer = String::with_capacity(1024); // Pre-allocate 1KB for common request sizes
         
@@ -84,8 +94,8 @@ impl MCPServer {
                 }
             }
             
-            // Process batch in parallel
-            if !batch_buffer.is_empty() {
+                // Process batch in parallel and buffer responses
+                if !batch_buffer.is_empty() {
                 let mut handles = Vec::with_capacity(batch_buffer.len());
                 let mut responses = Vec::with_capacity(batch_buffer.len());
                 
@@ -135,12 +145,28 @@ impl MCPServer {
                     }
                 }
                 
-                // Write responses in batch
+                // Buffer responses and flush when needed
                 for response in responses {
-                    stdout.write_all(response.as_bytes()).await?;
-                    stdout.write_all(b"\n").await?;
+                    if !response_buffer.add(response) || response_buffer.should_flush() {
+                        // Buffer full or threshold reached, flush it
+                        let buffered = response_buffer.take_buffer();
+                        if buffered.len() > 100 { // Compress large batches
+                            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                            for resp in buffered {
+                                encoder.write_all(resp.as_bytes()).await?;
+                                encoder.write_all(b"\n").await?;
+                            }
+                            let compressed = encoder.finish()?;
+                            stdout.write_all(&compressed).await?;
+                        } else {
+                            for resp in buffered {
+                                stdout.write_all(resp.as_bytes()).await?;
+                                stdout.write_all(b"\n").await?;
+                            }
+                        }
+                        stdout.flush().await?;
+                    }
                 }
-                stdout.flush().await?;
             }
             
             // Break main loop if EOF was reached
@@ -153,6 +179,11 @@ impl MCPServer {
     }
 
     async fn handle_request(&self, line: &str) -> Option<Value> {
+        // Try cache first
+        let cache_key = format!("{}", line);
+        if let Some(cached_response) = self.response_cache.get(&cache_key).await {
+            return Some(cached_response);
+        }
         let line = line.trim();
         if line.is_empty() {
             return Some(json!({
@@ -411,13 +442,18 @@ impl MCPServer {
         };
 
         match result {
-            Ok(content) => json!({
+            Ok(content) => {
+                let response = json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "result": {
                     "content": [{"type": "text", "text": content}]
                 }
-            }),
+                });
+                // Cache successful responses
+                self.response_cache.set(cache_key, response.clone()).await;
+                response
+            },
             Err(e) => json!({
                 "jsonrpc": "2.0",
                 "id": id,

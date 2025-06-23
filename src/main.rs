@@ -1,14 +1,12 @@
+// src/main.rs – fixed
 use anyhow::Result;
 use env_logger;
 use log::{error, info};
 use std::env;
-// Import all modules
-mod database;
-mod heartbeat;
-mod memory;
-mod tasks;
-mod trello;
 
+// Top‑level crates / modules that really exist in this project.
+// All feature‑specific sub‑modules (database, heartbeat, memory, tasks, trello, …)
+// live under the `tools` crate, so we don’t declare them here to avoid E0583.
 mod server;
 mod schemas;
 mod tools;
@@ -18,47 +16,51 @@ use server::MCPServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging to stderr
+    // Initialise logging (writes to stderr by default so Warp can capture it)
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Stderr)
         .init();
 
     info!("Starting Warp MCP Tasks Server v1.0.0");
 
-    // Validate required environment variables
+    // Make sure all the mandatory environment variables are present and fall back
+    // to sensible defaults for optional ones.
     validate_environment()?;
 
-    // Create and start the MCP server
+    // Spin‑up the MCP server and block until it terminates.
     let server = MCPServer::new().await?;
     server.run().await?;
 
     Ok(())
 }
 
+/// Ensures the process has all the variables it needs to operate.
+///
+/// * `TRELLO_KEY`, `TRELLO_TOKEN`  and `TRELLO_BOARD_ID` are required – we bail
+///   out early if any of them are missing.
+/// * `REDIS_URL` and `HEARTBEAT_TIMEOUT` are optional and get sane defaults if
+///   they are absent.
 fn validate_environment() -> Result<()> {
-    let required_vars = [
-        "TRELLO_KEY",
-        "TRELLO_TOKEN", 
-        "TRELLO_BOARD_ID"
-    ];
+    const REQUIRED_VARS: [&str; 3] = ["TRELLO_KEY", "TRELLO_TOKEN", "TRELLO_BOARD_ID"];
 
-    for var in &required_vars {
+    for var in REQUIRED_VARS {        
         if env::var(var).is_err() {
-            error!("Missing required environment variable: {}", var);
-            return Err(anyhow::anyhow!("Missing environment variable: {}", var));
+            error!("Missing required environment variable: {var}");
+            return Err(anyhow::anyhow!("Missing environment variable: {var}"));
         }
     }
 
-    // Optional vars with defaults
-    if env::var("REDIS_URL").is_err() {
-        info!("REDIS_URL not set, using default: redis://127.0.0.1:6379");
-        env::set_var("REDIS_URL", "redis://127.0.0.1:6379");
-    }
+    // Provide fall‑backs for optional env‑vars so the rest of the code can just
+    // unwrap() them safely.
+    env::set_var(
+        "REDIS_URL",
+        env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned()),
+    );
 
-    if env::var("HEARTBEAT_TIMEOUT").is_err() {
-        info!("HEARTBEAT_TIMEOUT not set, using default: 120 seconds");
-        env::set_var("HEARTBEAT_TIMEOUT", "120");
-    }
+    env::set_var(
+        "HEARTBEAT_TIMEOUT",
+        env::var("HEARTBEAT_TIMEOUT").unwrap_or_else(|_| "120".to_owned()),
+    );
 
     Ok(())
 }
