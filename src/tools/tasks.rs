@@ -16,14 +16,31 @@ pub async fn scan_trello_tasks(
         board_id, key, token
     );
     
-    let cards: Vec<TrelloCard> = client.get(&url).send().await?.json().await?;
+    let mut cards: Vec<TrelloCard> = client.get(&url).send().await?.json().await?;
     
     // Filter by list if specified
-    let _list_filter = args.get("list_filter").and_then(|v| v.as_str());
+    if let Some(list_filter) = args.get("list_filter").and_then(|v| v.as_str()) {
+        cards.retain(|card| {
+            match list_filter {
+                "todo" => !card.closed && card.id_list == "TODO_LIST_ID",
+                "in_progress" => !card.closed && card.id_list == "IN_PROGRESS_LIST_ID",
+                "done" => card.closed || card.id_list == "DONE_LIST_ID",
+                "all" => true,
+                _ => true
+            }
+        });
+    }
     
-    // Get agent assignments from Redis
+    // Get agent assignments and list details from Redis
     let mut conn = redis.get_connection().await?;
     let mut enriched_cards = Vec::new();
+
+    // Get list details for context
+    let lists_url = format!(
+        "https://api.trello.com/1/boards/{}/lists?key={}&token={}",
+        board_id, key, token
+    );
+    let lists: Vec<TrelloList> = client.get(&lists_url).send().await?.json().await?;
     
     for card in cards {
         let assignment_key = format!("assignment:{}", card.id);
@@ -35,20 +52,34 @@ pub async fn scan_trello_tasks(
             "available"
         };
         
+        // Find list name
+        let list_name = lists.iter()
+            .find(|l| l.id == card.id_list)
+            .map(|l| l.name.clone())
+            .unwrap_or_else(|| "Unknown List".to_string());
+
         enriched_cards.push(json!({
             "id": card.id,
             "name": card.name,
             "description": card.desc,
             "list_id": card.id_list,
+            "list_name": list_name,
             "status": status,
             "assigned_to": agent_id,
-            "url": card.url
+            "url": card.url,
+            "short_url": card.shortUrl,
+            "due": card.due,
+            "due_complete": card.dueComplete,
+            "labels": card.labels,
+            "members": card.id_members
         }));
     }
     
     Ok(json!({
         "cards": enriched_cards,
-        "total": enriched_cards.len()
+        "total": enriched_cards.len(),
+        "lists": lists,
+        "filters_applied": args.get("list_filter").and_then(|v| v.as_str()).unwrap_or("all")
     }).to_string())
 }
 

@@ -55,10 +55,33 @@ pub struct TrelloCard {
     pub desc: String,
     #[serde(rename = "idList")]
     pub id_list: String,
+    #[serde(rename = "idBoard")]
+    pub id_board: String,
     pub closed: bool,
     pub url: String,
+    pub shortUrl: Option<String>,
     #[serde(rename = "idMembers")]
     pub id_members: Vec<String>,
+    pub labels: Vec<TrelloLabel>,
+    pub due: Option<String>,
+    pub dueComplete: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TrelloLabel {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TrelloList {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "idBoard")]
+    pub id_board: String,
+    pub closed: bool,
+    pub pos: f64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
