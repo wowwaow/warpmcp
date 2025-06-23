@@ -9,9 +9,10 @@ description = "MCP server for Warp terminal agent coordination with Trello and p
 tokio = { version = "1.35", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-redis = { version = "0.24", features = ["tokio-comp", "json"] }
-deadpool-redis = "0.14"
+redis = { version = "0.24", features = ["tokio-comp", "json", "aio"] }
+deadpool-redis = { version = "0.14", features = ["rt_tokio_1"] }
 metrics = "0.21"
+metrics-exporter-prometheus = "0.13"
 reqwest = { version = "0.11", features = ["json"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 anyhow = "1.0"
@@ -22,6 +23,9 @@ env_logger = "0.10"
 async-trait = "0.1"
 base64 = "0.21"
 urlencoding = "2.1"
+flate2 = "1.0"
+fastrand = "2.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
+
