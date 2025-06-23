@@ -5,10 +5,10 @@
     "env": {
       "REDIS_URL": "redis://127.0.0.1:6380",
       "HEARTBEAT_TIMEOUT": "30",
-      "TRELLO_TOKEN": "MTM4MDg4OTE0Mzg0ODIxMDU4Nw.G8LN7F.bb9HuvmuUMgGRut9_-9EHEUVzAliIN7suMLq04",
+      "TRELLO_TOKEN": "ATTAe1df26a7ea529284f4695ac7fa3c7998d7b0412f93fe98541fc7ac073c89b0bd3A655863",
       "TRELLO_BOARD_ID": "684601538be13978c7f3d231",
       "RUST_LOG": "info",
-      "TRELLO_KEY": "367e9c646fac17e7b96a8b95d59b8747d2c2bf2ba86cf38e5e9d4965a8068b9f"
+      "TRELLO_KEY": "9261212035c0fc6ae135fdc8dbba4b4d"
     },
     "working_directory": null,
     "start_on_launch": true

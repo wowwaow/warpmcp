@@ -16,7 +16,20 @@ pub async fn scan_trello_tasks(
         board_id, key, token
     );
     
-    let mut cards: Vec<TrelloCard> = client.get(&url).send().await?.json().await?;
+    let response = client.get(&url).send().await?;
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!("Failed to get cards: {}", response.status()));
+    }
+    
+    let response_text = response.text().await?;
+    let mut cards: Vec<TrelloCard> = match serde_json::from_str(&response_text) {
+        Ok(cards) => cards,
+        Err(e) => {
+            println!("Failed to parse response: {}", e);
+            println!("Response text: {}", response_text);
+            return Err(anyhow::anyhow!("Failed to parse card list: {}", e));
+        }
+    };
     
     // Filter by list if specified
     if let Some(list_filter) = args.get("list_filter").and_then(|v| v.as_str()) {
