@@ -19,7 +19,7 @@ format = "json"
 [logging.rotation]
 max_size = "100MB"
 max_files = 5
-comppress = true
+compress = true
 
 [metrics]
 # Metrics collection and reporting settings
