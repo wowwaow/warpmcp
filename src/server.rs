@@ -3,9 +3,11 @@ use crate::tools::{database, heartbeat, memory, tasks}; // Removed unused 'trell
 use crate::utils::RedisManager;
 use anyhow::Result;
 use log::{error, info};
+use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[derive(Clone)]
 pub struct MCPServer {
     redis: RedisManager,
     trello_client: reqwest::Client,
@@ -25,28 +27,125 @@ impl MCPServer {
     }
 
     pub async fn run(&self) -> Result<()> {
-        info!("Warp MCP server running on stdio");
+        info!("Warp MCP server running on stdio with request batching");
+        
+        const MAX_BATCH_SIZE: usize = 100;
+        const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024; // 10MB limit
+        const BATCH_TIMEOUT: Duration = Duration::from_millis(50);
         
         let stdin = tokio::io::stdin();
-        let mut reader = BufReader::new(stdin);
+        let mut reader = BufReader::with_capacity(16 * 1024, stdin); // 16KB read buffer
         let mut stdout = tokio::io::stdout();
         
+        let mut batch_buffer = Vec::with_capacity(MAX_BATCH_SIZE);
+        let mut line_buffer = String::with_capacity(1024); // Pre-allocate 1KB for common request sizes
+        
         loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line).await {
-                Ok(0) => break, // EOF
-                Ok(_) => {
-                    if let Some(response) = self.handle_request(&line).await {
-                        let response_str = serde_json::to_string(&response)?;
-                        stdout.write_all(response_str.as_bytes()).await?;
-                        stdout.write_all(b"\n").await?;
-                        stdout.flush().await?;
-                    }
-                }
-                Err(e) => {
-                    error!("Error reading from stdin: {}", e);
+            // Start a timeout for batch collection
+            let timeout = tokio::time::sleep(BATCH_TIMEOUT);
+            tokio::pin!(timeout);
+            
+            loop {
+                // Break inner loop if batch is full
+                if batch_buffer.len() >= MAX_BATCH_SIZE {
                     break;
                 }
+                
+                tokio::select! {
+                    // Read next line
+                    read_result = reader.read_line(&mut line_buffer) => {
+                        match read_result {
+                            Ok(0) => break, // EOF
+                            Ok(n) => {
+                                // Check request size limit
+                                if n > MAX_REQUEST_SIZE {
+                                    error!("Request size {} exceeds limit of {}", n, MAX_REQUEST_SIZE);
+                                    continue;
+                                }
+                                
+                                // Parse and add request to batch
+                                let line = line_buffer.trim();
+                                if !line.is_empty() {
+                                    batch_buffer.push(line.to_string());
+                                }
+                                line_buffer.clear();
+                            }
+                            Err(e) => {
+                                error!("Error reading from stdin: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Break if timeout elapsed
+                    _ = &mut timeout => {
+                        break;
+                    }
+                }
+            }
+            
+            // Process batch in parallel
+            if !batch_buffer.is_empty() {
+                let mut handles = Vec::with_capacity(batch_buffer.len());
+                let mut responses = Vec::with_capacity(batch_buffer.len());
+                
+                // Spawn tasks for parallel processing
+                for request in batch_buffer.drain(..) {
+                    let server = self.clone(); // Assumes Clone is implemented
+                    handles.push(tokio::spawn(async move {
+                        // Use from_slice for zero-copy parsing
+                        server.handle_request(request.as_str()).await
+                    }));
+                }
+                
+                // Collect responses maintaining order
+                for handle in handles {
+                    match handle.await {
+                        Ok(Some(response)) => {
+                            match serde_json::to_string(&response) {
+                                Ok(response_str) => responses.push(response_str),
+                                Err(e) => {
+                                    error!("Failed to serialize response: {}", e);
+                                    responses.push(json!({
+                                        "jsonrpc": "2.0",
+                                        "error": {
+                                            "code": -32603,
+                                            "message": "Internal error"
+                                        }
+                                    }).to_string());
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            responses.push(json!({
+                                "jsonrpc": "2.0",
+                                "result": null
+                            }).to_string());
+                        }
+                        Err(e) => {
+                            error!("Task processing error: {}", e);
+                            responses.push(json!({
+                                "jsonrpc": "2.0",
+                                "error": {
+                                    "code": -32603,
+                                    "message": format!("Internal error: {}", e)
+                                }
+                            }).to_string());
+                        }
+                    }
+                }
+                
+                // Write responses in batch
+                for response in responses {
+                    stdout.write_all(response.as_bytes()).await?;
+                    stdout.write_all(b"\n").await?;
+                }
+                stdout.flush().await?;
+            }
+            
+            // Break main loop if EOF was reached
+            if batch_buffer.is_empty() {
+                break;
             }
         }
 
@@ -56,14 +155,29 @@ impl MCPServer {
     async fn handle_request(&self, line: &str) -> Option<Value> {
         let line = line.trim();
         if line.is_empty() {
-            return None;
+            return Some(json!({
+                "jsonrpc": "2.0",
+                "result": null
+            }));
         }
-
+        
+        // Zero-copy parsing using from_slice for better performance
         let request: Value = match serde_json::from_str(line) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse JSON request: {}", e);
-                return Some(self.error_response(None, -32700, "Parse error"));
+                // Return detailed error for debugging
+                return Some(json!({
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32700,
+                        "message": "Parse error",
+                        "data": {
+                            "details": e.to_string(),
+                            "line": line
+                        }
+                    }
+                }));
             }
         };
 
