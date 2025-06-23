@@ -744,6 +744,7 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "deadpool",
  "deadpool-redis",
  "env_logger",
  "fastrand",

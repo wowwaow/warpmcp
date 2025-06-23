@@ -25,13 +25,20 @@ async fn main() -> Result<()> {
 
     // Make sure all the mandatory environment variables are present and fall back
     // to sensible defaults for optional ones.
-    validate_environment()?;
+    validate_environment()?;    
 
     // Spin‑up the MCP server and block until it terminates.
-    let server = MCPServer::new().await?;
-    server.run().await?;
-
-    Ok(())
+    let redis_url = env::var("REDIS_URL").unwrap();
+    let redis_manager = utils::RedisManager::new(&redis_url).await?;    
+    let server = MCPServer::new(&redis_manager).await?;
+    info!("Redis URL: {}", redis_url);
+    info!("Starting server...");
+    info!("Server address: {}", server.address());
+    info!("Server port: {}", server.port());
+    server.run().await; 
+    Ok(())      
+    // Note: The server.run() method is assumed to be an async method that runs
+    // the server indefinitely. If it returns, the server has stopped.
 }
 
 /// Ensures the process has all the variables it needs to operate.

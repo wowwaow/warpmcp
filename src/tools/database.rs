@@ -1,12 +1,7 @@
 use crate::utils::RedisManager;
 use anyhow::Result;
-use redis::AsyncCommands;
-use redis_json_async::JsonAsyncCommands;
+use redis::{AsyncCommands, JsonAsyncCommands};
 use serde_json::{json, Value};
-use uuid::Uuid;
-use crate::schemas::{StoreKnowledgeArgs, KnowledgeEntry};
-use crate::errors::Error;
-// tools/database.rs
 
 pub async fn execute_rag_query(
     redis: &RedisManager,

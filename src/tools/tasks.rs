@@ -1,10 +1,6 @@
 use crate::schemas::*;
 use crate::utils::{RedisManager, get_trello_config};
 use anyhow::Result;
-use std::time::Duration;
-use crate::schemas::TrelloCard;
-use crate::schemas::{TakeTaskArgs, UpdateTaskArgs};
-use reqwest::Client;
 use redis::AsyncCommands;
 use serde_json::{json, Value};
 
@@ -20,16 +16,7 @@ pub async fn scan_trello_tasks(
         board_id, key, token
     );
     
-    let cards: Vec<TrelloCard> = match client.get(&url).send().await {
-        Ok(response) => {
-            if response.status().is_success() {
-                response.json().await?
-            } else {
-                return Err(anyhow::anyhow!("Trello API error: {}", response.status()));
-            }
-        }
-        Err(e) => return Err(anyhow::anyhow!("Failed to connect to Trello: {}", e))
-    };
+    let cards: Vec<TrelloCard> = client.get(&url).send().await?.json().await?;
     
     // Filter by list if specified
     let _list_filter = args.get("list_filter").and_then(|v| v.as_str());
@@ -99,32 +86,7 @@ pub async fn take_trello_task(
         "text": format!("Task claimed by agent: {}", params.agent_id)
     });
     
-    // Add retry logic for Trello API calls
-    let mut retries = 3;
-    let mut delay = Duration::from_millis(100);
-    
-    loop {
-        match client.post(&comment_url).json(&comment_body).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    break;
-                } else {
-                    if retries == 0 {
-                        return Err(anyhow::anyhow!("Trello API error after retries: {}", response.status()));
-                    }
-                }
-            }
-            Err(e) => {
-                if retries == 0 {
-                    return Err(anyhow::anyhow!("Failed to connect to Trello after retries: {}", e));
-                }
-            }
-        }
-        
-        retries -= 1;
-        tokio::time::sleep(delay).await;
-        delay *= 2; // Exponential backoff
-    }
+    client.post(&comment_url).json(&comment_body).send().await?;
     
     Ok(format!("Task {} successfully assigned to agent {}", params.card_id, params.agent_id))
 }
