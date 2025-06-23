@@ -292,15 +292,8 @@ impl SearchIndex {
         let mut builder = QueryBuilder::new();
         
         // Convert query to Redis search syntax
-        let mut terms = params.query.split_whitespace().collect::<Vec<_>>();
-        let mut query = String::from("@content:(")
-            + &terms.join(" | ")
-            + ")"
-            + " @content:(\"" + &params.query + "\")";
-            
-        if params.fuzzy_distance.is_some() {
-            query = format!("{}%", query);
-        }
+        let escaped_query = params.query.replace('"', "\\\"");
+        let mut query = format!("@content:{}%", escaped_query);
         
         builder = builder.text_match("", &query, false);
         
