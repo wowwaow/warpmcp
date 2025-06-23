@@ -15,6 +15,10 @@ pub async fn scan_trello_tasks(
         "https://api.trello.com/1/boards/{board_id}/cards"
     );
     
+    println!("DEBUG - Trello API URL: {}", url);
+    println!("DEBUG - Trello key: {}", key);
+    println!("DEBUG - Trello token: {}", token);
+    
     let response = client.get(&url)
         .header("Accept", "application/json")
         .query(&[

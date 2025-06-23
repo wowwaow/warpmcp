@@ -43,7 +43,9 @@ pub fn get_heartbeat_timeout() -> u64 {
 
 pub fn get_trello_config() -> (String, String, String) {
     let key = env::var("TRELLO_KEY").expect("TRELLO_KEY must be set");
-    let token = env::var("TRELLO_TOKEN").expect("TRELLO_TOKEN must be set");
+    let token = env::var("TRELLO_TOKEN").unwrap_or_else(|_| {
+        env::var("TRELLO_API_TOKEN").expect("TRELLO_TOKEN or TRELLO_API_TOKEN must be set")
+    });
     let board_id = env::var("TRELLO_BOARD_ID").expect("TRELLO_BOARD_ID must be set");
     
     (key, token, board_id)
