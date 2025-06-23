@@ -1,0 +1,28 @@
+[server]
+# Server configuration settings
+
+[database]
+# Database connection and configuration settings
+
+[integration]
+# Integration settings with external services
+
+[tasks]
+# Task scheduling and management configuration
+
+[logging]
+# Logging configuration settings
+level = "info"
+file = "/home/clara-sorrenti/Documents/MF_MCP/logs/mcp-warp.log"
+format = "json"
+
+[logging.rotation]
+max_size = "100MB"
+max_files = 5
+comppress = true
+
+[metrics]
+# Metrics collection and reporting settings
+
+[security]
+# Security and authentication settings
