@@ -19,7 +19,7 @@ pub async fn scan_trello_tasks(
     let cards: Vec<TrelloCard> = client.get(&url).send().await?.json().await?;
     
     // Filter by list if specified
-    let list_filter = args.get("list_filter").and_then(|v| v.as_str());
+    let _list_filter = args.get("list_filter").and_then(|v| v.as_str());
     
     // Get agent assignments from Redis
     let mut conn = redis.get_connection().await?;
@@ -69,11 +69,11 @@ pub async fn take_trello_task(
     }
     
     // Assign task
-    conn.set_ex(&assignment_key, &params.agent_id, 3600).await?;
+    let _: () = conn.set_ex(&assignment_key, &params.agent_id, 3600).await?;
     
     // Add to agent's active tasks
     let agent_tasks_key = format!("agent:{}:tasks", params.agent_id);
-    conn.sadd(&agent_tasks_key, &params.card_id).await?;
+    let _: () = conn.sadd(&agent_tasks_key, &params.card_id).await?;
     
     // Add comment to Trello card
     let (key, token, _) = get_trello_config();
@@ -163,7 +163,7 @@ pub async fn update_trello_task(
         "timestamp": chrono::Utc::now().timestamp()
     });
     
-    conn.set_ex(&update_key, update_data.to_string(), 86400 * 7).await?;
+    let _: () = conn.set_ex(&update_key, update_data.to_string(), 86400 * 7).await?;
     
     Ok(format!("Task {} updated successfully", params.card_id))
 }

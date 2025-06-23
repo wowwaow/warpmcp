@@ -5,7 +5,7 @@ use redis::{AsyncCommands, JsonAsyncCommands};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-const MEMORY_EXPIRATION: usize = 604800; // 7 days in seconds
+const MEMORY_EXPIRATION: i64 = 604800; // 7 days in seconds
 
 pub async fn store_knowledge(
     redis: &RedisManager,
@@ -32,27 +32,27 @@ pub async fn store_knowledge(
     
     // Store in RedisJSON for complex queries
     let json_key = format!("knowledge:{}", knowledge_id);
-    conn.json_set(&json_key, "$", &entry).await?;
-    conn.expire(&json_key, MEMORY_EXPIRATION).await?;
+    let _: () = conn.json_set(&json_key, "$", &entry).await?;
+    let _: () = conn.expire(&json_key, MEMORY_EXPIRATION).await?;
     
     // Index by multiple dimensions for RAG
     // Category index
     let category_key = format!("idx:category:{}", params.category);
-    conn.sadd(&category_key, &knowledge_id).await?;
+    let _: () = conn.sadd(&category_key, &knowledge_id).await?;
     
     // Agent index
     let agent_key = format!("idx:agent:{}", params.agent_id);
-    conn.sadd(&agent_key, &knowledge_id).await?;
+    let _: () = conn.sadd(&agent_key, &knowledge_id).await?;
     
     // Tag indices
     for tag in &params.tags {
         let tag_key = format!("idx:tag:{}", tag);
-        conn.sadd(&tag_key, &knowledge_id).await?;
+        let _: () = conn.sadd(&tag_key, &knowledge_id).await?;
     }
     
     // Key-based index for quick lookups
     let lookup_key = format!("lookup:{}:{}", params.agent_id, params.key);
-    conn.set_ex(&lookup_key, &knowledge_id, MEMORY_EXPIRATION).await?;
+    let _: () = conn.set_ex(&lookup_key, &knowledge_id, MEMORY_EXPIRATION as u64).await?;
     
     Ok(format!("Knowledge stored with ID: {}", knowledge_id))
 }
@@ -112,7 +112,7 @@ pub async fn search_knowledge(
                     
                     // Increment access count
                     knowledge.access_count += 1;
-                    conn.json_set(&key, "$", &vec![&knowledge]).await?;
+                    let _: () = conn.json_set(&key, "$", &vec![&knowledge]).await?;
                     
                     results.push(json!({
                         "id": knowledge.id,
@@ -144,7 +144,7 @@ pub async fn learn_from_agents(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Topic required"))?;
     
-    let time_range = args.get("time_range")
+    let _time_range = args.get("time_range")
         .and_then(|v| v.as_str())
         .unwrap_or("all");
     

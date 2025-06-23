@@ -1,5 +1,5 @@
 use crate::schemas::*;
-use crate::tools::{database, heartbeat, memory, tasks, trello};
+use crate::tools::{database, heartbeat, memory, tasks}; // Removed unused 'trello'
 use crate::utils::RedisManager;
 use anyhow::Result;
 use log::{error, info};

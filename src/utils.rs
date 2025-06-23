@@ -1,5 +1,5 @@
 use anyhow::Result;
-use redis::{Client, aio::Connection, AsyncCommands, JsonAsyncCommands};
+use redis::{Client, aio::Connection};
 use std::env;
 
 pub struct RedisManager {
