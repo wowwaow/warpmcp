@@ -5,6 +5,8 @@ use redis::{AsyncCommands, JsonAsyncCommands};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use super::search::SearchIndex;
+
 const MEMORY_EXPIRATION: i64 = 604800; // 7 days in seconds
 
 pub async fn store_knowledge(
@@ -35,24 +37,11 @@ pub async fn store_knowledge(
     let _: () = conn.json_set(&json_key, "$", &entry).await?;
     let _: () = conn.expire(&json_key, MEMORY_EXPIRATION).await?;
     
-    // Index by multiple dimensions for RAG
-    // Category index
-    let category_key = format!("idx:category:{}", params.category);
-    let _: () = conn.sadd(&category_key, &knowledge_id).await?;
-    
-    // Agent index
-    let agent_key = format!("idx:agent:{}", params.agent_id);
-    let _: () = conn.sadd(&agent_key, &knowledge_id).await?;
-    
-    // Tag indices
-    for tag in &params.tags {
-        let tag_key = format!("idx:tag:{}", tag);
-        let _: () = conn.sadd(&tag_key, &knowledge_id).await?;
+    // Ensure search index exists
+    let index = SearchIndex::new("knowledge-idx");
+    if let Err(e) = index.create(redis).await {
+        eprintln!("Warning: Failed to create search index: {}", e);
     }
-    
-    // Key-based index for quick lookups
-    let lookup_key = format!("lookup:{}:{}", params.agent_id, params.key);
-    let _: () = conn.set_ex(&lookup_key, &knowledge_id, MEMORY_EXPIRATION as u64).await?;
     
     Ok(format!("Knowledge stored with ID: {}", knowledge_id))
 }
@@ -62,67 +51,28 @@ pub async fn search_knowledge(
     args: Value,
 ) -> Result<String> {
     let params: SearchKnowledgeArgs = serde_json::from_value(args)?;
-    let mut conn = redis.get_connection().await?;
-
-    let mut results = Vec::new();
-    let limit = params.limit.unwrap_or(10);
-    let mut matches = Vec::new();
-
-    // Search in content using pattern matching
-    let pattern = format!("knowledge:*");
-    let keys: Vec<String> = conn.keys(&pattern).await?;
     
-    for key in keys {
-        let entry: Option<String> = conn.json_get(&key, "$").await?;
-        if let Some(json_str) = entry {
-            if let Ok(knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
-                // Simple text search
-                if knowledge.content.to_lowercase().contains(&params.query.to_lowercase()) ||
-                   knowledge.tags.iter().any(|t| t.to_lowercase().contains(&params.query.to_lowercase())) {
-                    matches.push((key, json_str));
-                }
+    // Use new search index
+    let index = SearchIndex::new("knowledge-idx");
+    let results = index.search(redis, &params).await?;
+    
+    // Update access counts for returned entries
+    let mut conn = redis.get_connection().await?;
+    if let Some(entries) = results.get("results").and_then(|v| v.as_array()) {
+        for entry in entries {
+            if let Some(id) = entry.get("id").and_then(|v| v.as_str()) {
+                let key = format!("knowledge:{}", id);
+                let _: () = redis::cmd("JSON.NUMINCRBY")
+                    .arg(&key)
+                    .arg("$.access_count")
+                    .arg(1)
+                    .query_async(&mut conn)
+                    .await?;
             }
         }
     }
-
-    for (_key, json_str) in matches {
-        if let Ok(mut knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
-            // Apply filters
-            if let Some(ref category) = params.category_filter {
-                if &knowledge.category != category {
-                    continue;
-                }
-            }
-            
-            if let Some(ref agent) = params.agent_filter {
-                if &knowledge.agent_id != agent {
-                    continue;
-                }
-            }
-            
-            // Increment access count
-            knowledge.access_count += 1;
-            let key = format!("knowledge:{}", knowledge.id);
-            let _: () = conn.json_set(&key, "$", &knowledge).await?;
-            
-            results.push(json!({
-                "id": knowledge.id,
-                "agent_id": knowledge.agent_id,
-                "category": knowledge.category,
-                "key": knowledge.key,
-                "content": knowledge.content,
-                "tags": knowledge.tags,
-                "created_at": knowledge.created_at,
-                "access_count": knowledge.access_count
-            }));
-        }
-    }
-
-    Ok(json!({
-        "query": params.query,
-        "results": results,
-        "count": results.len()
-    }).to_string())
+    
+    Ok(results.to_string())
 }
 
 pub async fn learn_from_agents(
