@@ -1,6 +1,10 @@
 use crate::schemas::*;
 use crate::utils::{RedisManager, get_trello_config};
 use anyhow::Result;
+use std::time::Duration;
+use crate::schemas::TrelloCard;
+use crate::schemas::{TakeTaskArgs, UpdateTaskArgs};
+use reqwest::Client;
 use redis::AsyncCommands;
 use serde_json::{json, Value};
 

@@ -2,6 +2,12 @@ use anyhow::Result;
 use env_logger;
 use log::{error, info};
 use std::env;
+// Import all modules
+mod database;
+mod heartbeat;
+mod memory;
+mod tasks;
+mod trello;
 
 mod server;
 mod schemas;

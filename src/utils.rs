@@ -2,6 +2,10 @@ use anyhow::Result;
 use deadpool_redis::{Pool, Runtime, Config, PoolConfig, Connection, Timeouts};
 use redis::{Pipeline, RedisError, AsyncCommands};
 use std::{env, time::Duration};
+use std::io::Write;
+use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use metrics::counter;
 use metrics::{counter, gauge};
 use tokio::time::interval;
 
@@ -35,7 +39,8 @@ impl RedisManager {
                 interval.tick().await;
                 if let Err(e) = Self::health_check(&pool_clone).await {
                     eprintln!("Redis health check failed: {}", e);
-                    counter!("redis_health_check_failures", "status" => "failed");
+                    metrics::counter!("redis_health_check_failures", "status" => "failed").increment(1);
+
                 }
                 Self::update_metrics(&pool_clone);
             }
