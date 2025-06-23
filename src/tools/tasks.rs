@@ -12,11 +12,18 @@ pub async fn scan_trello_tasks(
     let (key, token, board_id) = get_trello_config();
     
     let url = format!(
-        "https://api.trello.com/1/boards/{}/cards?key={}&token={}",
-        board_id, key, token
+        "https://api.trello.com/1/boards/{board_id}/cards"
     );
     
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url)
+        .header("Accept", "application/json")
+        .query(&[
+            ("key", &key),
+            ("token", &token),
+        ])
+        .send()
+        .await?;
+    
     if !response.status().is_success() {
         return Err(anyhow::anyhow!("Failed to get cards: {}", response.status()));
     }
