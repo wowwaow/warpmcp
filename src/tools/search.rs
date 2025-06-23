@@ -289,17 +289,34 @@ impl SearchIndex {
     pub async fn advanced_search(&self, redis: &RedisManager, params: &SearchParams) -> Result<Value> {
         let mut conn = redis.get_connection().await?;
         
-        // Direct Redis command with minimal query
-        let results: String = redis::cmd("FT.SEARCH")
+        // Create basic index
+        let _: RedisResult<()> = redis::cmd("FT.CREATE")
+            .arg("knowledge-idx")
+            .arg("ON").arg("JSON")
+            .arg("PREFIX").arg(1).arg("knowledge:")
+            .arg("SCHEMA")
+            .arg("$.content").arg("AS").arg("content").arg("TEXT")
+            .query_async(&mut conn)
+            .await;
+            
+        // Basic search with tuple response
+        let results: (usize, Vec<String>, HashMap<String, String>) = redis::cmd("FT.SEARCH")
             .arg("knowledge-idx")
             .arg(format!("@content:{}", params.query))
             .query_async(&mut conn)
             .await?;
             
+        let mut entries = Vec::new();
+        for (_key, value) in results.2 {
+            if let Ok(entry) = serde_json::from_str::<Value>(&value) {
+                entries.push(entry);
+            }
+        }
+        
         Ok(json!({
             "query": params.query,
-            "results": results,
-            "count": 1
+            "results": entries,
+            "count": entries.len()
         }))
     }
 }
