@@ -74,8 +74,7 @@ pub async fn search_knowledge(
     for key in keys {
         let entry: Option<String> = conn.json_get(&key, "$").await?;
         if let Some(json_str) = entry {
-            if let Ok(entry) = serde_json::from_str::<Vec<KnowledgeEntry>>(&json_str) {
-                if let Some(knowledge) = entry.first() {
+            if let Ok(knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
                     // Simple text search - in production, use proper text search
                     if knowledge.content.to_lowercase().contains(&params.query.to_lowercase()) ||
                        knowledge.tags.iter().any(|t| t.to_lowercase().contains(&params.query.to_lowercase())) {
@@ -95,36 +94,34 @@ pub async fn search_knowledge(
         let entry: Option<String> = conn.json_get(&key, "$").await?;
         
         if let Some(json_str) = entry {
-            if let Ok(mut entries) = serde_json::from_str::<Vec<KnowledgeEntry>>(&json_str) {
-                if let Some(mut knowledge) = entries.pop() {
-                    // Apply filters
-                    if let Some(ref category) = params.category_filter {
-                        if &knowledge.category != category {
-                            continue;
-                        }
+            if let Ok(mut knowledge) = serde_json::from_str::<KnowledgeEntry>(&json_str) {
+                // Apply filters
+                if let Some(ref category) = params.category_filter {
+                    if &knowledge.category != category {
+                        continue;
                     }
-                    
-                    if let Some(ref agent) = params.agent_filter {
-                        if &knowledge.agent_id != agent {
-                            continue;
-                        }
-                    }
-                    
-                    // Increment access count
-                    knowledge.access_count += 1;
-                    let _: () = conn.json_set(&key, "$", &vec![&knowledge]).await?;
-                    
-                    results.push(json!({
-                        "id": knowledge.id,
-                        "agent_id": knowledge.agent_id,
-                        "category": knowledge.category,
-                        "key": knowledge.key,
-                        "content": knowledge.content,
-                        "tags": knowledge.tags,
-                        "created_at": knowledge.created_at,
-                        "access_count": knowledge.access_count
-                    }));
                 }
+                
+                if let Some(ref agent) = params.agent_filter {
+                    if &knowledge.agent_id != agent {
+                        continue;
+                    }
+                }
+                
+                // Increment access count
+                knowledge.access_count += 1;
+                let _: () = conn.json_set(&key, "$", &knowledge).await?;
+                
+                results.push(json!({
+                    "id": knowledge.id,
+                    "agent_id": knowledge.agent_id,
+                    "category": knowledge.category,
+                    "key": knowledge.key,
+                    "content": knowledge.content,
+                    "tags": knowledge.tags,
+                    "created_at": knowledge.created_at,
+                    "access_count": knowledge.access_count
+                }));
             }
         }
     }
