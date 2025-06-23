@@ -1,0 +1,5 @@
+
+# Rust build artifacts
+MCP/target/
+*.log
+.DS_Store
