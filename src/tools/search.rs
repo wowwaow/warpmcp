@@ -267,6 +267,7 @@ impl SearchIndex {
     
     pub async fn search(&self, redis: &RedisManager, params: &SearchKnowledgeArgs) -> Result<Value> {
         // Convert standard args to extended search params
+        let return_fields = vec!["$.id".to_string(), "$.agent_id".to_string(), "$.category".to_string(), "$.content".to_string()];
         let search_params = SearchParams {
             query: params.query.clone(),
             filters: vec![],
@@ -276,7 +277,7 @@ impl SearchIndex {
             sort_by: Some("created_at".to_string()),
             sort_asc: false,
             min_score: Some(MIN_SCORE),
-            return_fields: None,
+            return_fields: Some(return_fields),
             summarize: true,
             highlight: true,
             fuzzy_distance: Some(DEFAULT_FUZZY_DISTANCE),
@@ -340,7 +341,7 @@ impl SearchIndex {
         if let Some(ref fields) = params.return_fields {
             cmd.arg("RETURN").arg(fields.len()).arg(fields);
         } else {
-            cmd.arg("RETURN").arg("ALL");
+cmd.arg("RETURN").arg(4).arg("id").arg("agent_id").arg("category").arg("content");
         }
         
         // Add highlighting and summarization
