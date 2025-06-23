@@ -11,7 +11,6 @@ const DEFAULT_SCORE_FIELD: &str = "_score";
 const KNOWLEDGE_PREFIX: &str = "knowledge:";
 const DEFAULT_FUZZY_DISTANCE: u32 = 2;
 const MAX_EXPANSIONS: u32 = 50;
-const MIN_SCORE: f64 = 0.1;
 
 // Search index types
 #[derive(Debug, Clone)]
@@ -93,7 +92,7 @@ impl Default for SearchParams {
             offset: Some(0),
             sort_by: None,
             sort_asc: true,
-            min_score: Some(MIN_SCORE),
+            min_score: None,
             return_fields: None,
             summarize: false,
             highlight: false,
@@ -291,7 +290,7 @@ impl SearchIndex {
             offset: Some(0),
             sort_by: Some("created_at".to_string()),
             sort_asc: false,
-            min_score: Some(MIN_SCORE),
+            min_score: None,
             return_fields,
             summarize: true,
             highlight: true,
@@ -308,128 +307,25 @@ impl SearchIndex {
     ) -> Result<Value> {
         let mut conn = redis.get_connection().await?;
 
-        // Build query string
-        let mut query_builder = QueryBuilder::new();
-        let fuzzy = params.fuzzy_distance.is_some();
-
-        if !params.query.is_empty() {
-            query_builder = query_builder.text_match("content", &params.query, fuzzy);
-        }
-
-        for (field, value) in &params.filters {
-            query_builder = query_builder.tag_filter(field, value);
-        }
-
-        for (field, min, max) in &params.numeric_filters {
-            query_builder = query_builder.numeric_range(field, *min, *max);
-        }
-
-        let query = query_builder.build();
-
-        // Build FT.SEARCH command
-        let mut cmd = redis::cmd("FT.SEARCH");
-        cmd.arg(&self.name)
-            .arg(&query)
-            .arg("LIMIT")
-            .arg(params.offset.unwrap_or(0))
-            .arg(params.limit.unwrap_or(10));
-
-        // Add sorting if specified
-        if let Some(sort_by) = &params.sort_by {
-            cmd.arg("SORTBY")
-                .arg(sort_by)
-                .arg(if params.sort_asc { "ASC" } else { "DESC" });
-        }
-
-        // Add minimum score
-        if let Some(min_score) = params.min_score {
-            cmd.arg("MINSCORE").arg(min_score);
-        }
-
-        // Handle return fields
-        match &params.return_fields {
-            Some(fields) => {
-                cmd.arg("RETURN").arg(fields.len());
-                for field in fields {
-                    cmd.arg(field);
-                }
-            }
-            None => {
-                cmd.arg("RETURN").arg(1).arg("$");
-            }
-        }
-
-        // Execute search
-        let raw_results: RedisResult<Vec<redis::Value>> = cmd.query_async(&mut conn).await;
-        let raw_results = match raw_results {
-            Ok(results) => results,
-            Err(e) => return Err(anyhow!("Search query failed: {}", e)),
-        };
-
-        // Parse results
-        let total_results = match raw_results.first() {
-            Some(redis::Value::Int(count)) => *count as usize,
-            _ => 0,
-        };
+        // Simplest possible search command
+        let results: (usize, Vec<String>, HashMap<String, String>) = redis::cmd("FT.SEARCH")
+            .arg(&self.name)
+            .arg(format!("@content:{}", params.query))
+            .arg("LIMIT").arg(0).arg(10)
+            .query_async(&mut conn)
+            .await?;
 
         let mut entries = Vec::new();
-        let mut index = 1; // Start after total count
-
-        while index < raw_results.len() {
-            // Parse document key
-            let key = match raw_results.get(index) {
-                Some(redis::Value::Data(k)) => String::from_utf8_lossy(k).into_owned(),
-                Some(redis::Value::Bulk(b)) if !b.is_empty() => {
-                    String::from_utf8_lossy(&b[0]).into_owned()
-                }
-                _ => continue,
-            };
-
-            // Parse score
-            let score = match raw_results.get(index + 1) {
-                Some(redis::Value::Data(s)) => String::from_utf8_lossy(s).parse::<f64>().unwrap_or(0.0),
-                Some(redis::Value::Bulk(b)) if b.len() > 1 => {
-                    String::from_utf8_lossy(&b[1]).parse::<f64>().unwrap_or(0.0)
-                }
-                _ => 0.0,
-            };
-
-            // Parse document fields
-            if let Some(redis::Value::Bulk(fields)) = raw_results.get(index + 2) {
-                let mut doc = json!({
-                    "_key": key,
-                    "_score": score,
-                });
-
-                for chunk in fields.chunks(2) {
-                    if let [redis::Value::Data(k), redis::Value::Data(v)] = chunk {
-                        let key_str = String::from_utf8_lossy(k);
-                        let value_str = String::from_utf8_lossy(v);
-
-                        // Special handling for entire document
-                        if key_str == "$" {
-                            if let Ok(value) = serde_json::from_str::<Value>(&value_str) {
-                                doc.as_object_mut().unwrap().extend(
-                                    value.as_object().unwrap().clone(),
-                                );
-                            }
-                        } else {
-                            // Try to parse as JSON, fallback to string
-                            let value = serde_json::from_str::<Value>(&value_str)
-                                .unwrap_or(Value::String(value_str.into_owned()));
-                            doc[key_str.as_ref()] = value;
-                        }
-                    }
-                }
-                entries.push(doc);
+        for (_key, value) in results.2 {
+            if let Ok(entry) = serde_json::from_str::<Value>(&value) {
+                entries.push(entry);
             }
-
-            index += 3; // Move to next document
         }
 
         Ok(json!({
-            "total": total_results,
+            "query": params.query,
             "results": entries,
+            "count": entries.len()
         }))
     }
 }
