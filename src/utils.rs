@@ -2,15 +2,13 @@ use anyhow::Result;
 use redis::{Client, aio::Connection};
 use std::env;
 
+#[derive(Clone)]
 pub struct RedisManager {
     client: Client,
 }
 
 impl RedisManager {
-    pub async fn new() -> Result<Self> {
-        let redis_url = env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-        
+    pub async fn new(redis_url: &str) -> Result<Self> {
         let client = Client::open(redis_url)?;
         
         // Test connection

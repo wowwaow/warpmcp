@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     // Spin‑up the MCP server and block until it terminates.
     let redis_url = env::var("REDIS_URL").unwrap();
     let redis_manager = utils::RedisManager::new(&redis_url).await?;    
-    let server = MCPServer::new(&redis_manager).await?;
+    let server = MCPServer::new(redis_manager).await?;
     info!("Redis URL: {}", redis_url);
     info!("Starting server...");
     info!("Server address: {}", server.address());

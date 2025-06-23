@@ -1,5 +1,5 @@
 use crate::schemas::*;
-use crate::tools::{database, heartbeat, memory, tasks}; // Removed unused 'trello'
+use crate::tools::{database, heartbeat, memory, tasks};
 use crate::utils::RedisManager;
 use anyhow::Result;
 use log::{error, info};
@@ -9,11 +9,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 pub struct MCPServer {
     redis: RedisManager,
     trello_client: reqwest::Client,
+    address: String,
+    port: u16,
 }
 
 impl MCPServer {
-    pub async fn new() -> Result<Self> {
-        let redis = RedisManager::new().await?;
+    pub async fn new(redis: RedisManager) -> Result<Self> {
         let trello_client = reqwest::Client::new();
 
         info!("MCP Server initialized with enhanced database capabilities");
@@ -21,6 +22,8 @@ impl MCPServer {
         Ok(Self {
             redis,
             trello_client,
+            address: String::from("127.0.0.1"),
+            port: 8080,
         })
     }
 
@@ -313,6 +316,14 @@ impl MCPServer {
                 }
             })
         }
+    }
+
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     fn error_response(&self, id: Option<Value>, code: i32, message: &str) -> Value {

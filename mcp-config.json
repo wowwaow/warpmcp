@@ -1,0 +1,16 @@
+{
+  "mcp-warp-tasks": {
+    "command": "/home/clara-sorrenti/Documents/MF_MCP/target/release/mcp-warp-tasks-server",
+    "args": [],
+    "env": {
+      "REDIS_URL": "redis://127.0.0.1:6380",
+      "HEARTBEAT_TIMEOUT": "30",
+      "TRELLO_TOKEN": "MTM4MDg4OTE0Mzg0ODIxMDU4Nw.G8LN7F.bb9HuvmuUMgGRut9_-9EHEUVzAliIN7suMLq04",
+      "TRELLO_BOARD_ID": "684601538be13978c7f3d231",
+      "RUST_LOG": "info",
+      "TRELLO_KEY": "367e9c646fac17e7b96a8b95d59b8747d2c2bf2ba86cf38e5e9d4965a8068b9f"
+    },
+    "working_directory": null,
+    "start_on_launch": true
+  }
+}
