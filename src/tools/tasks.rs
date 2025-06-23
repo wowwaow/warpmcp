@@ -1,5 +1,5 @@
 use crate::schemas::*;
-use crate::utils::{RedisManager, get_trello_config};
+use crate::utils::{RedisManager, get_trello_config, get_trello_list_ids};
 use anyhow::Result;
 use redis::AsyncCommands;
 use serde_json::{json, Value};
@@ -20,11 +20,12 @@ pub async fn scan_trello_tasks(
     
     // Filter by list if specified
     if let Some(list_filter) = args.get("list_filter").and_then(|v| v.as_str()) {
+        let (todo_list_id, in_progress_list_id, done_list_id) = get_trello_list_ids();
         cards.retain(|card| {
             match list_filter {
-                "todo" => !card.closed && card.id_list == "TODO_LIST_ID",
-                "in_progress" => !card.closed && card.id_list == "IN_PROGRESS_LIST_ID",
-                "done" => card.closed || card.id_list == "DONE_LIST_ID",
+                "todo" => !card.closed && card.id_list == todo_list_id,
+                "in_progress" => !card.closed && card.id_list == in_progress_list_id,
+                "done" => card.closed || card.id_list == done_list_id,
                 "all" => true,
                 _ => true
             }

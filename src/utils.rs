@@ -23,6 +23,17 @@ impl RedisManager {
     }
 }
 
+pub fn get_trello_list_ids() -> (String, String, String) {
+    let todo = env::var("TRELLO_TODO_LIST_ID")
+        .unwrap_or_else(|_| "684601538be13978c7f3d231".to_string());
+    let in_progress = env::var("TRELLO_IN_PROGRESS_LIST_ID")
+        .unwrap_or_else(|_| "684601538be13978c7f3d232".to_string());
+    let done = env::var("TRELLO_DONE_LIST_ID")
+        .unwrap_or_else(|_| "684601538be13978c7f3d233".to_string());
+    
+    (todo, in_progress, done)
+}
+
 pub fn get_heartbeat_timeout() -> u64 {
     env::var("HEARTBEAT_TIMEOUT")
         .unwrap_or_else(|_| "120".to_string())
