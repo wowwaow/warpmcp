@@ -23,6 +23,16 @@ compress = true
 
 [metrics]
 # Metrics collection and reporting settings
+enabled = true
+endpoint = "/metrics"
+port = 9090
 
 [security]
 # Security and authentication settings
+tls_enabled = false
+auth_required = true
+allowed_origins = ["http://localhost:*"]
+
+[security.rate_limit]
+requests_per_second = 10
+burst = 20
