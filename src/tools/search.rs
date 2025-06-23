@@ -291,9 +291,8 @@ impl SearchIndex {
         // Build query using QueryBuilder
         let mut builder = QueryBuilder::new();
         
-        // Convert query to Redis search syntax
-        let escaped_query = params.query.replace('"', "\\\"");
-        let mut query = format!("@content:{}%", escaped_query);
+        // Convert query to Redis format
+        let query = format!("@content:({})", params.query);
         
         builder = builder.text_match("", &query, false);
         
