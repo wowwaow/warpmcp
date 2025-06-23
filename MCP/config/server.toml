@@ -1,8 +1,25 @@
 [server]
 # Server configuration settings
+host = "localhost"
+port = 8080
 
 [database]
 # Database connection and configuration settings
+redis_url = "redis://localhost:6379"
+redis_pool_size = 10
+
+[redis]
+host = "localhost"
+port = 6379
+db = 0
+pool_size = 10
+
+[redis.search]
+index_prefix = "knowledge:"
+default_language = "english"
+default_score_field = "_score"
+fuzzy_distance = 2
+max_expansions = 50
 
 [integration]
 # Integration settings with external services
